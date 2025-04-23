@@ -80,7 +80,7 @@ cv::Mat EdgeDetector::preProcess(const cv::Mat& image) {
     // 这与原文“从左上角开始按‘Z’字形遍历AC系数，得到系数序列，将排在序列前90%的AC系数中非零系数的值置为零”
     // 的顺序可能略有不同，但效果是类似的：抑制大部分 AC 系数。
     // 更精确的实现需要严格按 Z 序排序后再置零。
-    std::reverse(acCoeffPtrs.begin(), acCoeffPtrs.end());
+    //std::reverse(acCoeffPtrs.begin(), acCoeffPtrs.end());
     for (int i = 0; i < numToZero && i < acCoeffPtrs.size(); ++i) {
         *(acCoeffPtrs[i]) = 0.0f;
     }
