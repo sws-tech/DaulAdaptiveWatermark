@@ -17,8 +17,7 @@ cv::Mat WatermarkEmbedder::embedWatermark(const cv::Mat& originalImage, const st
         throw std::invalid_argument("Input image is empty.");
     }
     if (originalImage.channels() != 1) {
-         // 或者尝试转换为灰度图
-         throw std::invalid_argument("Input image must be grayscale.");
+        throw std::invalid_argument("Input image must be single channel (Y channel).");
     }
     if (watermarkText.empty()) {
         throw std::invalid_argument("Watermark text cannot be empty.");

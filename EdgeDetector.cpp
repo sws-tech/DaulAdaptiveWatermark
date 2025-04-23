@@ -27,65 +27,51 @@ cv::Mat EdgeDetector::detectEdges(const cv::Mat& originalImage) {
 
 // 预处理：DCT域噪声抑制
 cv::Mat EdgeDetector::preProcess(const cv::Mat& image) {
-    // 确保图像是浮点型以便进行 DCT
+    // 修改为CV_64F精度
     cv::Mat floatImage;
-    image.convertTo(floatImage, CV_32F);
+    image.convertTo(floatImage, CV_64F);
 
     // 计算 DCT
     cv::Mat dctCoeffs = calculateDCT(floatImage);
 
     // --- Z字形遍历并置零 AC 系数 ---
-    // 获取 DCT 系数矩阵的大小
     int rows = dctCoeffs.rows;
     int cols = dctCoeffs.cols;
-    std::vector<float*> acCoeffPtrs; // 指向 AC 系数的指针
-    std::vector<float> acCoeffValues; // AC 系数的值
+    std::vector<double*> acCoeffPtrs;
+    std::vector<double> acCoeffValues;
 
-    // Z字形扫描并收集非零 AC 系数 (跳过 DC 系数 dctCoeffs.at<float>(0, 0))
     int r = 0, c = 0;
     bool up = true;
-    for (int i = 1; i < rows * cols; ++i) { // 从第二个系数开始
-        if (r != 0 || c != 0) { // 跳过 DC(0,0)
-             if (dctCoeffs.at<float>(r, c) != 0.0f) {
-                 acCoeffPtrs.push_back(&dctCoeffs.at<float>(r, c));
-                 acCoeffValues.push_back(dctCoeffs.at<float>(r, c));
+    for (int i = 1; i < rows * cols; ++i) {
+        if (r != 0 || c != 0) {
+             if (dctCoeffs.at<double>(r, c) != 0.0) {
+                 acCoeffPtrs.push_back(&dctCoeffs.at<double>(r, c));
+                 acCoeffValues.push_back(dctCoeffs.at<double>(r, c));
              }
         }
-
-        // Z字形移动
         if (up) {
             if (r > 0 && c < cols - 1) { r--; c++; }
             else {
                 up = false;
-                if (c < cols - 1) c++; else r++; // 到达右上边界
+                if (c < cols - 1) c++; else r++;
             }
         } else {
             if (c > 0 && r < rows - 1) { c--; r++; }
             else {
                 up = true;
-                if (r < rows - 1) r++; else c++; // 到达左下边界
+                if (r < rows - 1) r++; else c++;
             }
         }
-         // 边界检查以防万一
         if (r >= rows || c >= cols) break;
     }
 
-
-    // 计算需要置零的系数数量 (前 90% 的非零 AC 系数)
     int numNonZeroAC = acCoeffPtrs.size();
     int numToZero = static_cast<int>(numNonZeroAC * 0.9);
-
-    // 将排在序列前 90% 的非零 AC 系数置零
-    // 注意：这里简单地将收集到的前 90% 指针指向的值置零，
-    // 这与原文“从左上角开始按‘Z’字形遍历AC系数，得到系数序列，将排在序列前90%的AC系数中非零系数的值置为零”
-    // 的顺序可能略有不同，但效果是类似的：抑制大部分 AC 系数。
-    // 更精确的实现需要严格按 Z 序排序后再置零。
-    //std::reverse(acCoeffPtrs.begin(), acCoeffPtrs.end());
+    std::reverse(acCoeffPtrs.begin(), acCoeffPtrs.end());
     for (int i = 0; i < numToZero && i < acCoeffPtrs.size(); ++i) {
-        *(acCoeffPtrs[i]) = 0.0f;
+        *(acCoeffPtrs[i]) = 0.0;
     }
     // --- Z字形处理结束 ---
-
 
     // 计算 IDCT
     cv::Mat idctResult = calculateIDCT(dctCoeffs);
@@ -93,12 +79,10 @@ cv::Mat EdgeDetector::preProcess(const cv::Mat& image) {
     // 转换回 8位无符号整数类型，并进行截断
     cv::Mat processedImage;
     idctResult.convertTo(processedImage, CV_8U);
-    cv::normalize(processedImage, processedImage, 0, 255, cv::NORM_MINMAX); // 归一化到 0-255
+    cv::normalize(processedImage, processedImage, 0, 255, cv::NORM_MINMAX);
 
-    cv::imwrite("dct_pre_processed.png", processedImage);
     return processedImage;
 }
-
 
 // 后处理：去除误检边缘 (式 1)
 cv::Mat EdgeDetector::postProcess(const cv::Mat& edgeImage, const cv::Mat& originalImage) {

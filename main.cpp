@@ -41,8 +41,8 @@ int main(int argc, char** argv) {
     int edgeThreshold = 5; // 默认边缘块阈值
 
     try {
-        // 加载输入图像 (灰度图)
-        cv::Mat inputImage = cv::imread(inputImagePath, cv::IMREAD_GRAYSCALE);
+        // 加载输入图像 (彩色)
+        cv::Mat inputImage = cv::imread(inputImagePath, cv::IMREAD_COLOR);
         if (inputImage.empty()) {
             std::cerr << "Error: Could not load image: " << inputImagePath << std::endl;
             return -1;
@@ -82,17 +82,28 @@ int main(int argc, char** argv) {
                  }
              }
 
+            // 转为YUV用于水印处理
+            cv::Mat yuvInput;
+            cv::cvtColor(inputImage, yuvInput, cv::COLOR_BGR2YCrCb);
+            std::vector<cv::Mat> yuvChannels;
+            cv::split(yuvInput, yuvChannels);
 
             // 创建嵌入器实例
             // 如果 numRegions 为 0，WatermarkEmbedder 内部会根据水印长度确定区域数
             WatermarkEmbedder embedder(numRegions == 0 ? 10 : numRegions, edgeThreshold); // 提供一个默认值以防万一
 
-            // 执行水印嵌入
+            // 执行水印嵌入（在Y通道上）
             std::cout << "Embedding watermark..." << std::endl;
-            cv::Mat watermarkedImage = embedder.embedWatermark(inputImage, watermarkText);
+            cv::Mat watermarkedY = embedder.embedWatermark(yuvChannels[0], watermarkText);
+
+            // 替换Y通道
+            yuvChannels[0] = watermarkedY;
+            cv::Mat watermarkedYUV, watermarkedBGR;
+            cv::merge(yuvChannels, watermarkedYUV);
+            cv::cvtColor(watermarkedYUV, watermarkedBGR, cv::COLOR_YCrCb2BGR);
 
             // 保存含水印图像
-            if (cv::imwrite(outputImagePath, watermarkedImage)) {
+            if (cv::imwrite(outputImagePath, watermarkedBGR)) {
                 std::cout << "Watermark embedded successfully. Output saved to: " << outputImagePath << std::endl;
             } else {
                 std::cerr << "Error: Could not save watermarked image to: " << outputImagePath << std::endl;
@@ -128,12 +139,18 @@ int main(int argc, char** argv) {
                 }
             }
 
+            // 提取时也从Y通道
+            cv::Mat yuvInput;
+            cv::cvtColor(inputImage, yuvInput, cv::COLOR_BGR2YCrCb);
+            std::vector<cv::Mat> yuvChannels;
+            cv::split(yuvInput, yuvChannels);
+
             // 创建提取器实例，传入原始图像路径
             WatermarkExtractor extractor(expectedLength, rawImagePath, edgeThreshold);
 
             // 执行水印提取
             std::cout << "Extracting watermark..." << std::endl;
-            std::string extractedText = extractor.extractWatermark(inputImage);
+            std::string extractedText = extractor.extractWatermark(yuvChannels[0]);
 
             if (!extractedText.empty()) {
                 std::cout << "Watermark extracted successfully:" << std::endl;

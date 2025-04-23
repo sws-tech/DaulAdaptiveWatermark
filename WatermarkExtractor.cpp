@@ -26,107 +26,83 @@ std::string WatermarkExtractor::extractWatermark(const cv::Mat& watermarkedImage
         throw std::invalid_argument("Input watermarked image is empty.");
     }
     if (watermarkedImage.channels() != 1) {
-        throw std::invalid_argument("Input watermarked image must be grayscale.");
+        throw std::invalid_argument("Input watermarked image must be single channel (Y channel).");
     }
 
     std::cout << "Starting watermark extraction..." << std::endl;
 
     // Step 1: 检测边缘，定位嵌入区域 (与嵌入过程一致)
     std::cout << "Step 1: Detecting edges and selecting regions..." << std::endl;
-    //cv::Mat edgeImage = edgeDetector.detectEdges(watermarkedImage); // 在含水印图像上检测
-    //cv::imwrite("de_edge.png", edgeImage);
-    // 注意：理论上应该在原始图像上检测边缘和选择区域，但提取时通常只有含水印图像
-    // 这里假设攻击对边缘和区域选择的影响不大，或者嵌入/提取使用相同的图像版本
-    cv::Mat raw_image = cv::imread(rawImagePath, cv::IMREAD_GRAYSCALE);
-
-    if (raw_image.empty()) {
+    cv::Mat raw_image = cv::imread(rawImagePath, cv::IMREAD_COLOR);
+    cv::Mat raw_yuv, raw_y;
+    if (!raw_image.empty()) {
+        cv::cvtColor(raw_image, raw_yuv, cv::COLOR_BGR2YCrCb);
+        std::vector<cv::Mat> yuvChannels;
+        cv::split(raw_yuv, yuvChannels);
+        raw_y = yuvChannels[0];
+    } else {
         std::cerr << "Failed to load image: " << rawImagePath << std::endl;
     }
-    cv::Mat edgeImage = edgeDetector.detectEdges(raw_image); // 在含水印图像上检测
+    cv::Mat edgeImage = edgeDetector.detectEdges(raw_y);
 
-    // 使用预期的水印长度 m 作为目标区域数
     RegionSelector regionSelectorForExtraction(regionScorer, expectedWatermarkLength,
                                                regionSelector.getWindowScale(),
                                                regionSelector.getStepScale());
-    std::vector<Region> selectedRegions = regionSelectorForExtraction.selectEmbeddingRegions(raw_image, edgeImage); // 在含水印图像上选择
+    std::vector<Region> selectedRegions = regionSelectorForExtraction.selectEmbeddingRegions(raw_y, edgeImage);
 
     if (selectedRegions.empty()) {
         throw std::runtime_error("Failed to select any regions for extraction.");
     }
     std::cout << "Selected " << selectedRegions.size() << " regions." << std::endl;
 
-    //for (auto& i : selectedRegions) {
-    //    std::cout << i.bounds.x << " " << i.bounds.y << std::endl;
-    //}
-
-    // 处理区域数量不足的情况
     int numRegionsFound = selectedRegions.size();
     if (numRegionsFound < expectedWatermarkLength) {
         std::cerr << "Warning: Found only " << numRegionsFound << " regions, expected " << expectedWatermarkLength << ". Extraction might be incomplete." << std::endl;
-        // 可以选择继续提取找到的部分，或者报错
     }
     int bitsToExtract = std::min(numRegionsFound, expectedWatermarkLength);
     if (bitsToExtract == 0) {
          throw std::runtime_error("No regions available to extract watermark bits.");
     }
 
-
     std::vector<int> extractedBits;
     extractedBits.reserve(bitsToExtract);
 
     cv::Mat watermarkedImageFloat;
-    watermarkedImage.convertTo(watermarkedImageFloat, CV_64F); // 转换为CV_64F进行DC计算
+    watermarkedImage.convertTo(watermarkedImageFloat, CV_64F);
 
     std::cout << "Step 2 & 3: Processing blocks and extracting bits..." << std::endl;
     for (int i = 0; i < bitsToExtract; ++i) {
         const Region& region = selectedRegions[i];
 
-        // 获取当前区域对应的图像块和边缘块
-        cv::Mat regionPatch = watermarkedImage(region.bounds); // 从含水印图像提取
-        cv::Mat regionEdgePatch = edgeImage(region.bounds); // 从计算出的边缘图提取
+        cv::Mat regionPatch = watermarkedImage(region.bounds);
+        cv::Mat regionEdgePatch = edgeImage(region.bounds);
 
-        // Step 2: 计算块参数 (特别是 sigma_xy)
-        // 使用 BlockProcessor 的公共方法来获取块信息
         ImageBlock block = blockProcessor.processRegionAsBlock(regionPatch, regionEdgePatch, region.bounds);
-        double sigma_xy = block.embeddingStrength; // 获取计算出的嵌入强度
+        double sigma_xy = block.embeddingStrength;
         int blockWidth = block.bounds.width;
         int blockHeight = block.bounds.height;
 
         if (sigma_xy <= 0 || blockWidth <= 0 || blockHeight <= 0) {
              std::cerr << "Warning: Invalid block parameters for region " << i << ". Skipping bit extraction." << std::endl;
-             // 可以插入一个默认值 (如 0) 或标记错误
-             extractedBits.push_back(0); // 插入默认值
+             extractedBits.push_back(0);
              continue;
         }
 
-        // Step 3: 提取 DC 系数并提取水印位 (式 19)
-        cv::Mat blockPatchFloat = watermarkedImageFloat(region.bounds); // 从浮点图像提取
-        double dcCoefficient = blockProcessor.calculateDCCoefficient(blockPatchFloat); // R'_DCxy
+        cv::Mat blockPatchFloat = watermarkedImageFloat(region.bounds);
+        double dcCoefficient = blockProcessor.calculateDCCoefficient(blockPatchFloat);
 
         double ab_sqrt = std::sqrt(static_cast<double>(blockWidth * blockHeight));
         double quantizationStep = sigma_xy * ab_sqrt;
 
         if (quantizationStep < 1e-9) {
             std::cerr << "Warning: Quantization step too small for region " << i << ". Skipping bit extraction." << std::endl;
-            extractedBits.push_back(0); // 插入默认值
+            extractedBits.push_back(0);
             continue;
         }
 
-        // 计算 floor(R'_DC / step) mod 2
         double normalizedDC = dcCoefficient / quantizationStep;
         int floorValue = static_cast<int>(std::floor(normalizedDC));
-        int extractedBit = std::abs(floorValue % 2); // 使用 abs 确保结果是 0 或 1
-
-        // --- 另一种 QIM 提取逻辑 (对应之前的嵌入逻辑) ---
-        // double roundedValue = std::round(normalizedDC);
-        // double diff = normalizedDC - roundedValue; // 判断在整数的左边还是右边
-        // if (std::abs(diff) < 0.25) { // 靠近整数，认为是 0
-        //     extractedBit = 0;
-        // } else { // 靠近半整数，认为是 1
-        //     extractedBit = 1;
-        // }
-        // --- 结束 ---
-        // 我们将使用式 (19) 的直接实现
+        int extractedBit = std::abs(floorValue % 2);
 
         extractedBits.push_back(extractedBit);
 
@@ -137,7 +113,6 @@ std::string WatermarkExtractor::extractWatermark(const cv::Mat& watermarkedImage
 
     std::cout << "Extraction of " << extractedBits.size() << " bits complete." << std::endl;
 
-    // Step 4: 解码
     std::cout << "Step 4: Decoding extracted bits..." << std::endl;
     std::string decodedWatermark;
     try {
@@ -145,8 +120,7 @@ std::string WatermarkExtractor::extractWatermark(const cv::Mat& watermarkedImage
         std::cout << "Decoding complete." << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Error during decoding: " << e.what() << std::endl;
-        // 根据需要决定是返回空字符串还是重新抛出异常
-        return ""; // 返回空字符串表示解码失败
+        return "";
     }
 
     return decodedWatermark;
