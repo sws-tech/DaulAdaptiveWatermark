@@ -8,7 +8,7 @@
 class BlockProcessor {
 public:
     // 构造函数，传入划分阈值 Th 和高斯滤波标准差
-    BlockProcessor(int edgeThreshold = 3, double gaussianSigma = 1.5); // Th=5 示例
+    BlockProcessor(int edgeThreshold = 25, double gaussianSigma = 1.5); // Th=5 示例
 
     // 划分区域为块，并计算块参数 (对应 Step 4)
     std::vector<ImageBlock> prepareBlocks(const cv::Mat& regionPatch, const cv::Mat& regionEdgePatch, int watermarkLength);

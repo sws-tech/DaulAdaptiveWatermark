@@ -29,6 +29,7 @@ void printUsage(const char* progName) {
 
 
 int main(int argc, char** argv) {
+    cv::utils::logging::setLogLevel(cv::utils::logging::LOG_LEVEL_ERROR);
     if (argc < 3) {
         printUsage(argv[0]);
         return -1;
@@ -57,6 +58,12 @@ int main(int argc, char** argv) {
             std::string outputImagePath = argv[3];
             std::string watermarkText = argv[4];
             int numRegions = 0; // 0 表示由水印长度决定
+
+            // 限制水印最大长度为8
+            if (watermarkText.length() > 8) {
+                watermarkText = watermarkText.substr(0, 8);
+                std::cout << "Watermark text truncated to 8 characters: " << watermarkText << std::endl;
+            }
 
             // 解析可选参数
             if (argc > 5) {
@@ -111,29 +118,13 @@ int main(int argc, char** argv) {
             }
 
         } else if (mode == "extract") {
-            if (argc < 5) {
-                std::cerr << "Error: Missing arguments for extract mode." << std::endl;
-                std::cerr << "Usage: " << argv[0] << " extract <watermarked_image> <expected_watermark_length> <raw_image_path> [edge_threshold]" << std::endl;
-                return -1;
-            }
-            int expectedLength = 0;
-            try {
-                expectedLength = std::stoi(argv[3]);
-                if (expectedLength <= 0) {
-                    std::cerr << "Error: expected_watermark_length must be positive." << std::endl;
-                    return -1;
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "Error: Invalid expected_watermark_length value." << std::endl;
-                return -1;
-            }
-
-            std::string rawImagePath = argv[4];
+            // 默认水印长度为361位，不再通过参数传入
+            int expectedLength = 361;
 
             // 解析可选参数
-            if (argc > 5) {
+            if (argc > 3) {
                 try {
-                    edgeThreshold = std::stoi(argv[5]);
+                    edgeThreshold = std::stoi(argv[3]);
                 } catch (const std::exception& e) {
                     std::cerr << "Warning: Invalid edge_threshold value. Using default: " << edgeThreshold << std::endl;
                 }
@@ -145,8 +136,8 @@ int main(int argc, char** argv) {
             std::vector<cv::Mat> yuvChannels;
             cv::split(yuvInput, yuvChannels);
 
-            // 创建提取器实例，传入原始图像路径
-            WatermarkExtractor extractor(expectedLength, rawImagePath, edgeThreshold);
+            // 创建提取器实例（不再需要原始图像路径）
+            WatermarkExtractor extractor(expectedLength, edgeThreshold);
 
             // 执行水印提取
             std::cout << "Extracting watermark..." << std::endl;

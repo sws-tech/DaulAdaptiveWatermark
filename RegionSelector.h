@@ -9,7 +9,7 @@
 class RegionSelector {
 public:
     // 构造函数，传入评分器、目标区域数量 d、滑窗比例 a、步长比例 b
-    RegionSelector(RegionScorer scorer, int numRegionsToSelect = 10, double windowScale = 0.02, double stepScale = 0.5);
+    RegionSelector(RegionScorer scorer, int numRegionsToSelect = 10, double windowScale = 0.25, double stepScale = 0.25);
 
     // 选择嵌入区域 (对应 Step 2 主要逻辑)
     std::vector<Region> selectEmbeddingRegions(const cv::Mat& originalImage, const cv::Mat& edgeImage);

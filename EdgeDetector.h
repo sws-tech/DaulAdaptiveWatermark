@@ -6,7 +6,7 @@
 class EdgeDetector {
 public:
     // 构造函数，可以传入参数如 Canny 阈值，后处理阈值 t
-    EdgeDetector(double lowThresh = 50, double highThresh = 150, double postProcessThresh = 20.0);
+    EdgeDetector(double lowThresh = 50, double highThresh = 150, double postProcessThresh = 30.0);
 
     // 执行边缘检测 (对应 Step 1)
     // 返回精确边缘图像 (二值图, 边缘为255, 非边缘为0)

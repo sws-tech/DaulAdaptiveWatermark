@@ -75,9 +75,9 @@ std::string WatermarkDecoder::performRSDecoding(const std::string& data) {
     const decoder_t decoder(field, generator_polynomial_index);
 
 
-    std::string temp = data.substr(0, 64).append(std::string(159, '\0'));
+    std::string temp = data.substr(0, 8).append(std::string(215, '\0'));
     // 5. 创建RS块
-    schifra::reed_solomon::block<code_length, fec_length> block(temp, data.substr(64, 96));
+    schifra::reed_solomon::block<code_length, fec_length> block(temp, data.substr(8, 40));
 
     // 6. 解码
     if (!decoder.decode(block)){
@@ -120,9 +120,10 @@ std::string WatermarkDecoder::decodeWatermark(std::vector<int>& extractedBits) {
         throw std::runtime_error("No bits extracted to decode.");
     }
 
-    for (auto& i : extractedBits) {
+    /*for (auto& i : extractedBits) {
         std::cout << i;
     }
+    std::cout << std::endl;*/
 
     // 1. 检查标记位
     if (!checkMarkerBits(extractedBits)) {

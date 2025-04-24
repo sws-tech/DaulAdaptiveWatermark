@@ -12,8 +12,8 @@
 
 class WatermarkExtractor {
 public:
-    // 构造函数，增加原始图像路径参数
-    WatermarkExtractor(int expectedWatermarkLength, const std::string& rawImagePath, int edgeThreshold = 10);
+    // 构造函数，不再需要原始图像路径
+    WatermarkExtractor(int expectedWatermarkLength, int edgeThreshold = 25);
 
     // 执行完整的水印提取过程
     std::string extractWatermark(const cv::Mat& watermarkedImage);
@@ -26,7 +26,6 @@ private:
     WatermarkDecoder watermarkDecoder; // 新增解码器实例
 
     int expectedWatermarkLength; // m
-    std::string rawImagePath; // 新增：原始图像路径
 };
 
 #endif // WATERMARK_EXTRACTOR_H

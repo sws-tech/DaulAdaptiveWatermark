@@ -96,7 +96,7 @@ std::string WatermarkEncoder::performRSEncoding(const std::string& data) {
     oss << block;
     std::string codeword = oss.str();
 
-    return codeword.substr(0, 64)+ codeword.substr(codeword.size() - 32, 32);
+    return codeword.substr(0, 8)+ codeword.substr(codeword.size() - 32, 32);
 }
 
 std::vector<int> stringToBitStream(const std::string& str) {
@@ -125,9 +125,10 @@ std::vector<int> WatermarkEncoder::encodeWatermark(const std::string& originalWa
     // 2. 添加标记信息
     std::vector<int> finalBits = addMarkerBits(encodedBits);
 
-    for (auto& i : finalBits) {
+    /*for (auto& i : finalBits) {
         std::cout << i;
     }
+    std::cout << std::endl;*/
 
     // 检查最终长度是否合理 (例如，不能为 0)
     if (finalBits.empty()) {
