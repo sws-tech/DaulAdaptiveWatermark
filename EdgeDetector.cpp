@@ -16,12 +16,9 @@ cv::Mat EdgeDetector::detectEdges(const cv::Mat& originalImage) {
     cv::Mat cannyEdges;
     cv::Canny(preprocessedImage, cannyEdges, cannyLowThreshold, cannyHighThreshold);
 
-    cv::imwrite("canny_process.png", cannyEdges);
-
     // Step 1.3: 后处理
     cv::Mat finalEdges = postProcess(cannyEdges, originalImage); // 注意：后处理使用原始图像计算灰度差
 
-    cv::imwrite("post_process.png", finalEdges);
     return finalEdges;
 }
 

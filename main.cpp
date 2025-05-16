@@ -4,12 +4,15 @@
 #include <opencv2/opencv.hpp>
 #include "WatermarkEmbedder.h"
 #include "WatermarkExtractor.h" // 包含提取器头文件
+#include <filesystem>
 
 // 函数：打印用法说明
 void printUsage(const char* progName) {
     std::cerr << "Usage: " << std::endl;
     std::cerr << "  " << progName << " embed <input_image> <output_image> <watermark_text> [num_regions] [edge_threshold]" << std::endl;
     std::cerr << "  " << progName << " extract <input_image> <expected_watermark_length> [edge_threshold]" << std::endl;
+    std::cerr << "  " << progName << " video-embed <input_video> <output_video> <watermark_text> [num_regions] [edge_threshold]" << std::endl;
+    std::cerr << "  " << progName << " video-extract <input_video> <expected_watermark_length> [edge_threshold]" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Arguments:" << std::endl;
     std::cerr << "  embed:        Embed a watermark." << std::endl;
@@ -38,10 +41,128 @@ int main(int argc, char** argv) {
     std::string mode = argv[1];
     std::string inputImagePath = argv[2];
 
+    // 新增：视频处理相关临时文件名
+    std::string tempFrame = "__temp_frame.png";
+    std::string tempFrameOut = "__temp_frame_out.png";
+
     // 默认参数
     int edgeThreshold = 5; // 默认边缘块阈值
 
     try {
+        if (mode == "video-embed") {
+            std::filesystem::create_directory("temp");
+            if (argc < 5) {
+                std::cerr << "Error: Missing arguments for video-embed mode." << std::endl;
+                printUsage(argv[0]);
+                return -1;
+            }
+            std::string outputVideoPath = argv[3];
+            std::string watermarkText = argv[4];
+            int numRegions = 0;
+            if (watermarkText.length() > 8) {
+                watermarkText = watermarkText.substr(0, 8);
+                std::cout << "Watermark text truncated to 8 characters: " << watermarkText << std::endl;
+            }
+            if (argc > 5) {
+                try {
+                    numRegions = std::stoi(argv[5]);
+                    if (numRegions <= 0) numRegions = 0;
+                } catch (...) { numRegions = 0; }
+            }
+            if (argc > 6) {
+                try { edgeThreshold = std::stoi(argv[6]); } catch (...) {}
+            }
+            // 1. 提取所有帧为图片序列
+            std::string extractFrames = "ffmpeg -y -i \"" + inputImagePath + "\" -q:v 2 temp/frame_%05d.png";
+            system(extractFrames.c_str());
+            // 2. 每30帧嵌入一次水印
+            int frameIdx = 1;
+            while (true) {
+                char frameName[64];
+                sprintf_s(frameName, "temp/frame_%05d.png", frameIdx);
+                cv::Mat inputImage = cv::imread(frameName, cv::IMREAD_COLOR);
+                if (inputImage.empty()) break;
+                if ((frameIdx-1) % 30 == 0) { // 每30帧嵌入一次
+                    cv::Mat yuvInput;
+                    cv::cvtColor(inputImage, yuvInput, cv::COLOR_BGR2YCrCb);
+                    std::vector<cv::Mat> yuvChannels;
+                    cv::split(yuvInput, yuvChannels);
+                    WatermarkEmbedder embedder(numRegions == 0 ? 4 : numRegions, edgeThreshold);
+                    cv::Mat watermarkedY = embedder.embedWatermark(yuvChannels[0], watermarkText);
+                    yuvChannels[0] = watermarkedY;
+                    cv::Mat watermarkedYUV, watermarkedBGR;
+                    cv::merge(yuvChannels, watermarkedYUV);
+                    cv::cvtColor(watermarkedYUV, watermarkedBGR, cv::COLOR_YCrCb2BGR);
+                    cv::imwrite(frameName, watermarkedBGR); // 覆盖原帧
+                }
+                ++frameIdx;
+            }
+            // 3. 合成新视频并加回原音频，强制每30帧一个I帧
+            std::string composeVideo = "ffmpeg -y -framerate 30 -i temp/frame_%05d.png -i \"" + inputImagePath + "\" -map 0:v -map 1:a? -c:v libx264 -g 30 -keyint_min 30 -sc_threshold 0 -c:a copy \"" + outputVideoPath + "\"";
+            system(composeVideo.c_str());
+            std::cout << "Watermark embedded to every 30th frame (I帧). Output video: " << outputVideoPath << std::endl;
+            std::filesystem::remove_all("temp");
+            return 0;
+        }
+        if (mode == "video-extract") {
+            std::filesystem::create_directory("temp");
+            if (argc < 4) {
+                std::cerr << "Error: Missing arguments for video-extract mode." << std::endl;
+                printUsage(argv[0]);
+                return -1;
+            }
+            int expectedLength = 361;
+            try { expectedLength = std::stoi(argv[3]); } catch (...) {}
+            if (argc > 4) {
+                try { edgeThreshold = std::stoi(argv[4]); } catch (...) {}
+            }
+            // 1. 提取所有帧为图片序列
+            std::string extractFrames = "ffmpeg -y -i \"" + inputImagePath + "\" -q:v 2 temp/frame_%05d.png";
+            system(extractFrames.c_str());
+            // 2. 每30帧提取一次水印，采用投票机制，RS解码失败的不参与
+            int frameIdx = 1;
+            std::map<std::string, int> watermarkVotes;
+            while (true) {
+                char frameName[64];
+                sprintf_s(frameName, "temp/frame_%05d.png", frameIdx);
+                cv::Mat inputImage = cv::imread(frameName, cv::IMREAD_COLOR);
+                if (inputImage.empty()) break;
+                if ((frameIdx-1) % 30 == 0) {
+                    cv::Mat yuvInput;
+                    cv::cvtColor(inputImage, yuvInput, cv::COLOR_BGR2YCrCb);
+                    std::vector<cv::Mat> yuvChannels;
+                    cv::split(yuvInput, yuvChannels);
+                    WatermarkExtractor extractor(expectedLength, edgeThreshold);
+                    std::string extractedText;
+                    try {
+                        extractedText = extractor.extractWatermark(yuvChannels[0]);
+                    } catch (...) {
+                        extractedText = "";
+                    }
+                    if (!extractedText.empty()) {
+                        watermarkVotes[extractedText]++;
+                        std::cout << "Frame " << frameIdx << ": " << extractedText << std::endl;
+                    } else {
+                        std::cout << "Frame " << frameIdx << ": (no valid watermark)" << std::endl;
+                    }
+                }
+                ++frameIdx;
+            }
+            std::filesystem::remove_all("temp");
+            // 输出票数最多的水印
+            if (!watermarkVotes.empty()) {
+                auto maxVote = std::max_element(watermarkVotes.begin(), watermarkVotes.end(),
+                    [](const std::pair<std::string, int>& a, const std::pair<std::string, int>& b) {
+                        return a.second < b.second;
+                    });
+                std::cout << "\nFinal voted watermark: " << maxVote->first << " (" << maxVote->second << " votes)" << std::endl;
+                return 0;
+            } else {
+                std::cout << "No valid watermark extracted from any I-frame." << std::endl;
+                return 1;
+            }
+        }
+
         // 加载输入图像 (彩色)
         cv::Mat inputImage = cv::imread(inputImagePath, cv::IMREAD_COLOR);
         if (inputImage.empty()) {
@@ -97,7 +218,7 @@ int main(int argc, char** argv) {
 
             // 创建嵌入器实例
             // 如果 numRegions 为 0，WatermarkEmbedder 内部会根据水印长度确定区域数
-            WatermarkEmbedder embedder(numRegions == 0 ? 10 : numRegions, edgeThreshold); // 提供一个默认值以防万一
+            WatermarkEmbedder embedder(numRegions == 0 ? 4 : numRegions, edgeThreshold); // 提供一个默认值以防万一
 
             // 执行水印嵌入（在Y通道上）
             std::cout << "Embedding watermark..." << std::endl;
