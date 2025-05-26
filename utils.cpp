@@ -1,6 +1,6 @@
 #include "utils.h"
 #include <map>
-#include <numeric> // for std::accumulate
+#include <numeric>
 
 // 计算DCT（使用OpenCV）
 cv::Mat calculateDCT(const cv::Mat& input) {
@@ -20,10 +20,6 @@ cv::Mat calculateDCT(const cv::Mat& input) {
 cv::Mat calculateIDCT(const cv::Mat& input) {
     cv::Mat idctResult;
     cv::idct(input, idctResult);
-    // 可能需要转换回 CV_8U，取决于后续用途
-    // cv::Mat uintResult;
-    // idctResult.convertTo(uintResult, CV_8U);
-    // return uintResult;
     return idctResult;
 }
 

@@ -1,7 +1,7 @@
 #include "BlockProcessor.h"
-#include <cmath> // for std::round, std::sqrt, std::pow, std::exp
+#include <cmath>
 #include <stdexcept>
-#include <numeric> // for std::accumulate
+#include <numeric>
 #include "utils.h" // 需要 calculateGaussianWeights
 
 BlockProcessor::BlockProcessor(int edgeThreshold, double gaussianSigma)
@@ -27,10 +27,28 @@ int BlockProcessor::determineFixedEdgeCount(int actualEdgeCount) {
     // 这里使用 Th 作为边缘块的固定值
 }
 
-// 计算嵌入强度 sigma_xy (式 11)
+// 计算嵌入强度 sigma_xy (式 11) - 优化版本：基于边缘密度的自适应强度调整
 double BlockProcessor::calculateEmbeddingStrength(int fixedEdgeCount) {
-    // σ = 0.2243 * N* + 1.5228
-    return 0.2243 * static_cast<double>(fixedEdgeCount) + 1.5228;
+    // 基础嵌入强度计算: σ = 0.2243 * N* + 1.5228
+    double baseStrength = 0.2243 * static_cast<double>(fixedEdgeCount) + 1.5228;
+    
+    // 自适应调整因子，基于边缘密度
+    double adaptiveFactor = 1.0;
+    
+    // 计算边缘密度（假设8x8块）
+    int blockSize = 8; // 标准块大小
+    double edgePixelRatio = static_cast<double>(fixedEdgeCount) / (blockSize * blockSize);
+    
+    if (edgePixelRatio > 0.3) {
+        // 高边缘密度区域：可以承受更强的嵌入强度，提高鲁棒性
+        adaptiveFactor = 1.1; // +10%
+    } else if (edgePixelRatio < 0.1) {
+        // 低边缘密度区域：使用更温和的嵌入，保证视觉质量
+        adaptiveFactor = 0.95; // -5%
+    }
+    // 中等边缘密度（0.1-0.3）保持原始强度
+    
+    return baseStrength * adaptiveFactor;
 }
 
 // 划分区域为块，并计算块参数 (对应 Step 4)
@@ -163,30 +181,7 @@ double BlockProcessor::calculateQuantizedDCCoefficient(double dcCoefficient, dou
     double normalizedDC = dcCoefficient / quantizationStep;
     double roundedDC = std::round(normalizedDC); // 四舍五入
     
-
-    // (round(DC/step) + w) mod 2
-    // 注意：原文公式似乎有误，(sigma(ab)^0.5 + w) mod 2 应该与量化决策有关
-    // 常见的 QIM 形式是根据 w 选择量化区间的中点
-    // 这里采用一种常见的 QIM 实现：
-    // 如果 w=0，量化到最近的偶数倍半步长；如果 w=1，量化到最近的奇数倍半步长。
     double quantizedDC;
-    //if (watermarkBit == 0) { // 嵌入 0
-    //    // 量化到 k * step
-    //    quantizedDC = roundedDC * quantizationStep;
-    //} else { // 嵌入 1
-    //    // 量化到 (k + 0.5) * step 或 (k - 0.5) * step，取决于哪个更近
-    //    if (normalizedDC > roundedDC) { // 在两个整数中间的右侧
-    //         quantizedDC = (roundedDC + 0.5) * quantizationStep;
-    //    } else { // 在两个整数中间的左侧或正好在整数上
-    //         quantizedDC = (roundedDC - 0.5) * quantizationStep;
-    //    }
-         // 确保量化后的值与原始值符号相同（可选，但通常需要）
-         // if ((quantizedDC * dcCoefficient) < 0 && std::abs(dcCoefficient) > 1e-9) {
-         //     quantizedDC = (roundedDC + (normalizedDC > roundedDC ? 0.5 : -0.5)) * quantizationStep;
-         //     // 再次检查，如果还是符号相反，可能需要特殊处理或调整逻辑
-         // }
-    //}
-
 
     // --- 另一种解释原文公式 (14) 的方式 ---
     int term = static_cast<int>(std::round(normalizedDC) + watermarkBit);
@@ -196,8 +191,6 @@ double BlockProcessor::calculateQuantizedDCCoefficient(double dcCoefficient, dou
     else { // 对应原文第二种情况
         quantizedDC = (std::round(normalizedDC) + 0.5) * quantizationStep;
     }
-    // --- 解释结束 ---
-    // 我们将使用上面更常见的 QIM 实现。
 
     return quantizedDC;
 }

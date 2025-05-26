@@ -3,16 +3,16 @@
 #include <vector>
 #include <opencv2/opencv.hpp>
 #include "WatermarkEmbedder.h"
-#include "WatermarkExtractor.h" // 包含提取器头文件
+#include "WatermarkExtractor.h"
 #include <filesystem>
 
 // 函数：打印用法说明
 void printUsage(const char* progName) {
     std::cerr << "Usage: " << std::endl;
     std::cerr << "  " << progName << " embed <input_image> <output_image> <watermark_text> [num_regions] [edge_threshold]" << std::endl;
-    std::cerr << "  " << progName << " extract <input_image> <expected_watermark_length> [edge_threshold]" << std::endl;
+    std::cerr << "  " << progName << " extract <input_image> [edge_threshold]" << std::endl;
     std::cerr << "  " << progName << " video-embed <input_video> <output_video> <watermark_text> [num_regions] [edge_threshold]" << std::endl;
-    std::cerr << "  " << progName << " video-extract <input_video> <expected_watermark_length> [edge_threshold]" << std::endl;
+    std::cerr << "  " << progName << " video-extract <input_video> [edge_threshold]" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Arguments:" << std::endl;
     std::cerr << "  embed:        Embed a watermark." << std::endl;
@@ -20,14 +20,17 @@ void printUsage(const char* progName) {
     std::cerr << "  <input_image>: Path to the input image (grayscale)." << std::endl;
     std::cerr << "  <output_image>: Path to save the watermarked image (embed mode only)." << std::endl;
     std::cerr << "  <watermark_text>: The text to embed (embed mode only)." << std::endl;
-    std::cerr << "  <expected_watermark_length>: The expected length of the encoded watermark in bits (extract mode only)." << std::endl;
     std::cerr << "  [num_regions]: (Optional, embed mode) Number of regions to select (default: derived from watermark length)." << std::endl;
     std::cerr << "  [edge_threshold]: (Optional) Threshold for classifying edge blocks (default: 5)." << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "Note: Watermark length is fixed at 361 bits for extraction." << std::endl;
     std::cerr << std::endl;
     std::cerr << "Example (Embed):" << std::endl;
     std::cerr << "  " << progName << " embed input.png output.png \"Secret Message\" 100 10" << std::endl;
     std::cerr << "Example (Extract):" << std::endl;
-    std::cerr << "  " << progName << " extract output.png 100 10" << std::endl; // Assuming encoded length is 100 bits
+    std::cerr << "  " << progName << " extract output.png 10" << std::endl;
+    std::cerr << "Example (Video Extract):" << std::endl;
+    std::cerr << "  " << progName << " video-extract output.mp4" << std::endl;
 }
 
 
@@ -103,18 +106,17 @@ int main(int argc, char** argv) {
             std::cout << "Watermark embedded to every 30th frame (I帧). Output video: " << outputVideoPath << std::endl;
             std::filesystem::remove_all("temp");
             return 0;
-        }
-        if (mode == "video-extract") {
+        }        if (mode == "video-extract") {
             std::filesystem::create_directory("temp");
-            if (argc < 4) {
-                std::cerr << "Error: Missing arguments for video-extract mode." << std::endl;
+            if (argc < 3) {
+                std::cerr << "Error: Missing video file path for video-extract mode." << std::endl;
                 printUsage(argv[0]);
                 return -1;
             }
+            // 固定水印长度为361位，不再需要从命令行传入
             int expectedLength = 361;
-            try { expectedLength = std::stoi(argv[3]); } catch (...) {}
-            if (argc > 4) {
-                try { edgeThreshold = std::stoi(argv[4]); } catch (...) {}
+            if (argc > 3) {
+                try { edgeThreshold = std::stoi(argv[3]); } catch (...) {}
             }
             // 1. 提取所有帧为图片序列
             std::string extractFrames = "ffmpeg -y -i \"" + inputImagePath + "\" -q:v 2 temp/frame_%05d.png";
@@ -236,13 +238,11 @@ int main(int argc, char** argv) {
             } else {
                 std::cerr << "Error: Could not save watermarked image to: " << outputImagePath << std::endl;
                 return -1;
-            }
-
-        } else if (mode == "extract") {
-            // 默认水印长度为361位，不再通过参数传入
+            }        } else if (mode == "extract") {
+            // 固定水印长度为361位，不再需要从命令行传入
             int expectedLength = 361;
 
-            // 解析可选参数
+            // 解析可选参数 - edge_threshold
             if (argc > 3) {
                 try {
                     edgeThreshold = std::stoi(argv[3]);

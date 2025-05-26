@@ -7,8 +7,8 @@
 #include "schifra_reed_solomon_decoder.hpp"
 #include "schifra_reed_solomon_block.hpp"
 #include "schifra_error_processes.hpp"
-#include <iostream> // For placeholder warning and error messages
-#include <numeric> // For std::accumulate
+#include <iostream>
+#include <numeric>
 #include <sstream>
 
 WatermarkDecoder::WatermarkDecoder(int rsN, int rsK, int markerLength, double markerThreshold)

@@ -1,7 +1,7 @@
 #include "WatermarkExtractor.h"
 #include <stdexcept>
 #include <iostream>
-#include <cmath> // for std::floor
+#include <cmath>
 
 WatermarkExtractor::WatermarkExtractor(int expectedWatermarkLength, int edgeThreshold)
     : edgeDetector(),

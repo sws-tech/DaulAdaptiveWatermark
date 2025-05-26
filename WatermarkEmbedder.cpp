@@ -1,7 +1,7 @@
 #include "WatermarkEmbedder.h"
 #include <stdexcept>
-#include <iostream> // For warnings/errors
-#include "utils.h" // 需要 calculateGaussianWeights (现在不需要直接调用了)
+#include <iostream>
+#include "utils.h"
 
 WatermarkEmbedder::WatermarkEmbedder(int numRegions, int edgeThreshold)
     : edgeDetector(), // 使用默认参数或传入特定参数

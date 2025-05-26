@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <cmath>
-#include <opencv2/opencv.hpp> // 假设使用OpenCV
+#include <opencv2/opencv.hpp>
 
 // 定义区域结构体
 struct Region {

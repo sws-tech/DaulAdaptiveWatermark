@@ -1,5 +1,5 @@
 #include "RegionSelector.h"
-#include <algorithm> // for std::sort, std::stable_sort
+#include <algorithm>
 
 RegionSelector::RegionSelector(RegionScorer scorer, int numRegionsToSelect, double windowScale, double stepScale)
     : regionScorer(scorer), targetRegionCount(numRegionsToSelect), windowSizeScale(windowScale), stepSizeScale(stepScale) {

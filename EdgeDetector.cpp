@@ -29,21 +29,24 @@ cv::Mat EdgeDetector::preProcess(const cv::Mat& image) {
     image.convertTo(floatImage, CV_64F);
 
     // 计算 DCT
-    cv::Mat dctCoeffs = calculateDCT(floatImage);
-
-    // --- Z字形遍历并置零 AC 系数 ---
+    cv::Mat dctCoeffs = calculateDCT(floatImage);    // --- 自适应DCT系数保留策略（优化版本）---
     int rows = dctCoeffs.rows;
     int cols = dctCoeffs.cols;
-    std::vector<double*> acCoeffPtrs;
-    std::vector<double> acCoeffValues;
+    std::vector<std::pair<double*, double>> acCoeffData; // (指针, 绝对值)
+
+    // 计算AC系数的方差以确定自适应阈值
+    double mean = 0.0, variance = 0.0;
+    int acCount = 0;
 
     int r = 0, c = 0;
     bool up = true;
     for (int i = 1; i < rows * cols; ++i) {
         if (r != 0 || c != 0) {
              if (dctCoeffs.at<double>(r, c) != 0.0) {
-                 acCoeffPtrs.push_back(&dctCoeffs.at<double>(r, c));
-                 acCoeffValues.push_back(dctCoeffs.at<double>(r, c));
+                 double absValue = std::abs(dctCoeffs.at<double>(r, c));
+                 acCoeffData.push_back({&dctCoeffs.at<double>(r, c), absValue});
+                 mean += absValue;
+                 acCount++;
              }
         }
         if (up) {
@@ -62,13 +65,38 @@ cv::Mat EdgeDetector::preProcess(const cv::Mat& image) {
         if (r >= rows || c >= cols) break;
     }
 
-    int numNonZeroAC = acCoeffPtrs.size();
-    int numToZero = static_cast<int>(numNonZeroAC * 0.9);
-    std::reverse(acCoeffPtrs.begin(), acCoeffPtrs.end());
-    for (int i = 0; i < numToZero && i < acCoeffPtrs.size(); ++i) {
-        *(acCoeffPtrs[i]) = 0.0;
+    if (acCount > 0) {
+        mean /= acCount;
+        
+        // 计算方差
+        for (const auto& coeffData : acCoeffData) {
+            variance += (coeffData.second - mean) * (coeffData.second - mean);
+        }
+        variance /= acCount;
+        
+        // 自适应阈值：基于方差的动态保留策略
+        double retentionRatio;
+        if (variance > mean * mean) {
+            // 高方差区域：更多细节，保留更多系数（保留15-5%，即置零85-95%）
+            retentionRatio = 0.15 - 0.10 * std::min(1.0, variance / (mean * mean * 4));
+        } else {
+            // 低方差区域：平滑区域，可以更大胆去噪（保留5-10%，即置零90-95%）
+            retentionRatio = 0.05 + 0.05 * (variance / (mean * mean));
+        }
+        
+        // 按绝对值排序，保留幅值较大的系数（优先保留重要系数）
+        std::sort(acCoeffData.begin(), acCoeffData.end(), 
+                 [](const std::pair<double*, double>& a, const std::pair<double*, double>& b) {
+                     return a.second > b.second;
+                 });
+        
+        // 置零较小的系数
+        int numToZero = static_cast<int>(acCoeffData.size() * (1.0 - retentionRatio));
+        for (int i = acCoeffData.size() - numToZero; i < acCoeffData.size(); ++i) {
+            *(acCoeffData[i].first) = 0.0;
+        }
     }
-    // --- Z字形处理结束 ---
+    // --- 自适应DCT系数处理结束 ---
 
     // 计算 IDCT
     cv::Mat idctResult = calculateIDCT(dctCoeffs);

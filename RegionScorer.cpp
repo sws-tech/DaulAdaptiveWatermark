@@ -1,6 +1,6 @@
 #include "RegionScorer.h"
-#include "utils.h" // 需要 calculateEntropy
-#include <numeric> // for std::accumulate
+#include "utils.h"
+#include <numeric>
 
 RegionScorer::RegionScorer(double alpha, double beta, double gamma, double delta)
     : weightAlpha(alpha), weightBeta(beta), weightGamma(gamma), weightDelta(delta) {}
@@ -40,9 +40,33 @@ double RegionScorer::calculateEdgeScore(const cv::Mat& edgePatch) {
     return score;
 }
 
-// 计算纹理得分 H_uv (式 3) - 使用信息熵
+// 计算纹理得分 H_uv (式 3) - 优化版本：加入局部方差作为纹理复杂度补充指标
 double RegionScorer::calculateTextureScore(const cv::Mat& originalPatch) {
-    return calculateEntropy(originalPatch); // 直接调用辅助函数
+    // 1. 计算原始熵值
+    double entropy = calculateEntropy(originalPatch);
+    
+    // 2. 计算局部方差作为纹理复杂度的补充指标
+    cv::Mat floatPatch;
+    originalPatch.convertTo(floatPatch, CV_32F);
+    
+    // 计算均值
+    cv::Scalar meanVal = cv::mean(floatPatch);
+    double mean = meanVal[0];
+    
+    // 计算方差
+    cv::Mat diffSquared;
+    cv::pow(floatPatch - mean, 2, diffSquared);
+    cv::Scalar varianceScalar = cv::mean(diffSquared);
+    double variance = varianceScalar[0];
+    
+    // 3. 归一化方差（假设最大方差约为10000，对于8位图像）
+    double normalizedVariance = std::min(1.0, variance / 10000.0);
+    
+    // 4. 加权组合：70%熵值 + 30%归一化方差
+    // 这种组合能更好地识别纹理复杂区域
+    double combinedScore = 0.7 * entropy + 0.3 * normalizedVariance;
+    
+    return combinedScore;
 }
 
 // 计算灰度得分 G_uv (式 4)
